@@ -1,16 +1,20 @@
-# Navigate to your project directory
+## Navigate to your project directory
 cd path/to/your/project
 
-# Create a virtual environment
-python3 -m venv venv  # On macOS and Linux
-python -m venv venv   # On Windows
+## Create a virtual environment
+### On macOS and Linux
+python3 -m venv venv  
+### On Windows
+python -m venv venv   
 
-# Activate the virtual environment:
-source venv/bin/activate  # On macOS and Linux
-.\venv\Scripts\activate   # On Windows
+## Activate the virtual environment:
+### On macOS and Linux
+source venv/bin/activate  
+### On Windows
+.\venv\Scripts\activate  
 
-# Install the dependencies using pip and the requirements.txt file:
+## Install the dependencies using pip and the requirements.txt file:
 pip install -r requirements.txt
 
-# Run flask app
+## Run flask app
 flask run
