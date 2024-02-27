@@ -8,48 +8,57 @@ SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def get_rec_from_prefs(prefs):
-    rent = prefs["rent"]
-    campus = prefs["campus"]
-    sqft = prefs["sqft"]
-
+def get_recs_query(prefs):
     query = f"""
         SELECT
-            id AS property_id,
-            data AS property_data,
-            rental_object
-        FROM (
-            SELECT
-                id,
-                data,
-                jsonb_array_elements(data->'rentals') AS rental_object
-            FROM properties
-        ) AS rentals
-        WHERE (rental_object->>'rent')::int <= {rent}
-        AND (rental_object->>'squareFeet')::int >= {sqft};
+            p.id AS property_id,
+            p.data AS property_data,
+            rental_object,
+            (
+                ({ prefs["miles_weight"] } * 1000 * (c.college->>'miles')::float) +
+                ({ prefs["sqft_weight"] } * 800 * (rental_object->>'squareFeet')::int) +
+                ({ prefs["rent_weight"] } * (rental_object->>'rent')::int)
+            ) AS weighted_score
+        FROM
+            properties p,
+            jsonb_array_elements(p.data->'schools'->'colleges') AS c(college)
+        CROSS JOIN LATERAL
+            jsonb_array_elements(p.data->'rentals') AS rental_object
+        WHERE
+            c.college @> '{"name": "{ prefs["campus"] or "Texas A&M University" }"}'
+            AND (rental_object->>'rent')::int <= { prefs["max_rent"] or 5000 }
+            AND (rental_object->>'squareFeet')::int >= { prefs["min_sqft"] or 0 }]
+        ORDER BY weighted_score ASC
+        LIMIT 50
+        OFFSET ({ prefs["page"] } - 1) * 50;
     """
 
     result = supabase.sql(query).execute()
 
-    return result
+    return result.data
 
+def get_prefs_query(id):
+    result = supabase.table("User").select("preferences").eq("id", id).execute()
+
+    preferences = result.data[0]['preferences']
+
+    return preferences
+
+print(get_recs_query(get_prefs_query(5)))
 # Execute the raw SQL query
-
 @app.route('/get_recommendations', methods=['GET'])
-def hello_world():
+def get_recs_api():
     id = request.headers.get('id')
 
     if not id:
         return jsonify({'error': 'Missing id header'}), 400
     
     try:
-        data = supabase.table('User').select('*').eq('uuid', uuid).execute()
+        prefs = get_prefs_query()
+        recs = get_recs_query(prefs)
 
-        if data.data:
-            return jsonify(data.data), 200
-        else:
-            return jsonify({'error': 'User not found'}), 404
-        
+        return recs
+    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
