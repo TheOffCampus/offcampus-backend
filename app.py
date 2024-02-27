@@ -1,12 +1,16 @@
 from flask import Flask, request, jsonify
 from supabase import create_client, Client
+from sqlalchemy import create_engine
+
 
 app = Flask(__name__)
 
 SUPABASE_URL='https://ihnradjuxnddmmioyeqp.supabase.co/'
 SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlobnJhZGp1eG5kZG1taW95ZXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDc5NDkyODcsImV4cCI6MjAyMzUyNTI4N30.cebjm2GbItaRLa81OYTi3Suffy8u52hO3lSRgjrK5r8'
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:YOUR_PASSWORD@aws-0-us-west-1.pooler.supabase.com:5432/postgres"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
 def get_recs_query(prefs):
     query = f"""
@@ -44,7 +48,6 @@ def get_prefs_query(id):
 
     return preferences
 
-print(get_recs_query(get_prefs_query(5)))
 # Execute the raw SQL query
 @app.route('/get_recommendations', methods=['GET'])
 def get_recs_api():
@@ -54,7 +57,7 @@ def get_recs_api():
         return jsonify({'error': 'Missing id header'}), 400
     
     try:
-        prefs = get_prefs_query()
+        prefs = get_prefs_query(id)
         recs = get_recs_query(prefs)
 
         return recs
