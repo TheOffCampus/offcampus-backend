@@ -19,9 +19,9 @@ def get_recs_query(prefs):
             p.data AS property_data,
             rental_object,
             (
-                ({prefs.get("miles_weight")} * -1 * 1000 * (c.college->>'miles')::float) +
-                ({prefs.get("sqft_weight")} * 1 * 800 * (rental_object->>'squareFeet')::int) +
-                ({prefs.get("rent_weight")} * -1 * (rental_object->>'rent')::int)
+                ({prefs.get("miles_weight", 0.5)} * -1 * 1000 * (c.college->>'miles')::float) +
+                ({prefs.get("sqft_weight", 0.5)} * 1 * 800 * (rental_object->>'squareFeet')::int) +
+                ({prefs.get("rent_weight", 0.5)} * -1 * (rental_object->>'rent')::int)
             ) AS weighted_score
         FROM
             properties p,
