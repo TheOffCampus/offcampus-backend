@@ -33,25 +33,27 @@ def get_recs_query(prefs):
             AND (rental_object->>'rent')::int <= {prefs.get("max_rent", 10000)}
             AND (rental_object->>'squareFeet')::int >= {prefs.get("min_sqft", 0)}
         ORDER BY weighted_score DESC
-        LIMIT 50
+        LIMIT 5
         OFFSET (1 - 1) * 50;
     ''')
     
     with engine.connect() as connection:
         result = connection.execute(query).fetchall()
 
-    data = {} 
+    data = []
 
     for row in result:
-        data["property_id"] = row[0]
-        data["property_data"] = row[1]
-        data["rental_object"] = row[2]
-        data["score"] = row[3]
+        row_data = {
+            "property_id": row[0],
+            "property_data": row[1],
+            "rental_object": row[2],
+            "score": row[3]
+        }
+        data.append(row_data)
 
     return data
 
 def get_prefs_query(id):
-    id = int(id)
     result = supabase.table("User").select("preferences").eq("id", id).execute()
 
     preferences = result.data[0]['preferences']
@@ -67,12 +69,29 @@ def get_recs_api():
 
     if not id:
         return jsonify({'error': 'Missing id header'}), 400
-    
+
     try:
         prefs = get_prefs_query(id)
         recs = get_recs_query(prefs)
 
-        return jsonify(recs)
+        simplified_recs = []
+        for rec in recs:
+            price = rec['property_data']['models'][0].get('rentLabel', 'N/A')
+            price_cleaned = price.replace('/ Person', '').strip()
+            simplified_rec = {
+                'id': rec['property_id'],
+                'name': rec['property_data'].get('propertyName', 'N/A'),
+                'modelName': rec['rental_object'].get('modelName'),
+                'rent': rec['rental_object'].get('rent'),
+                'modelImage': rec['rental_object'].get('image'),
+                'address': rec['property_data']['location'].get('fullAddress', 'N/A'),
+                'price': price_cleaned,
+                'score': rec['score'],
+                'photos': rec['property_data'].get('photos', [''])
+            }
+            simplified_recs.append(simplified_rec)
+
+        return jsonify(simplified_recs)
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
