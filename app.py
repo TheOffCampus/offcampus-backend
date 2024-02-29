@@ -40,18 +40,18 @@ def get_recs_query(prefs):
     with engine.connect() as connection:
         result = connection.execute(query).fetchall()
 
-    data = {}
+    data = {} 
 
     for row in result:
-        print(type(row[1]))
         data["property_id"] = row[0]
         data["property_data"] = row[1]
         data["rental_object"] = row[2]
         data["score"] = row[3]
-    
+
     return data
 
 def get_prefs_query(id):
+    id = int(id)
     result = supabase.table("User").select("preferences").eq("id", id).execute()
 
     preferences = result.data[0]['preferences']
