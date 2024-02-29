@@ -41,7 +41,6 @@ def get_recs_query(prefs):
         result = connection.execute(query).fetchall()
 
     data = []
-
     for row in result:
         row_data = {
             "property_id": row[0],
