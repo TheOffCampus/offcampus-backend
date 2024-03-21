@@ -1,9 +1,11 @@
 from flask import Flask, request, jsonify
 from supabase import create_client, Client
 from sqlalchemy import create_engine, text
+from flask_cors import CORS
 
 
 app = Flask(__name__)
+CORS(app, resources={r'/*': {'origins': '*'}})
 
 SUPABASE_URL='https://ihnradjuxnddmmioyeqp.supabase.co/'
 SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlobnJhZGp1eG5kZG1taW95ZXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDc5NDkyODcsImV4cCI6MjAyMzUyNTI4N30.cebjm2GbItaRLa81OYTi3Suffy8u52hO3lSRgjrK5r8'
