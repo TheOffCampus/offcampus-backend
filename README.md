@@ -17,4 +17,4 @@
 `pip install -r requirements.txt`
 
 ## Run flask app
-`flask run`
+`flask run --host=0.0.0.0`
