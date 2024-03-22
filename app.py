@@ -15,6 +15,16 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
 def get_recs_query(prefs):
+    """
+	Generate and execute a raw SQL query to find property recommendations based on user preferences.
+
+	Args:
+    	prefs (dict): User preferences including weights for miles, square footage, and rent,
+                  	as well as filters for campus name, maximum rent, and minimum square footage.
+
+	Returns:
+    	list of dicts: List of recommended properties with details and calculated scores.
+	"""
     query = text(f'''
         SELECT
             p.id AS property_id,
@@ -42,6 +52,7 @@ def get_recs_query(prefs):
     with engine.connect() as connection:
         result = connection.execute(query).fetchall()
 
+    print("results: ", result[0][1])
     data = []
     for row in result:
         row_data = {
@@ -55,6 +66,15 @@ def get_recs_query(prefs):
     return data
 
 def get_prefs_query(id):
+    """
+	Retrieve user preferences from the Supabase 'User' table by user ID.
+
+	Args:
+    	id (int): User ID.
+
+	Returns:
+    	dict: User preferences stored in the database.
+	"""
     result = supabase.table("User").select("preferences").eq("id", id).execute()
 
     preferences = result.data[0]['preferences']
@@ -66,6 +86,12 @@ get_recs_query(get_prefs_query(5))
 # Execute the raw SQL query
 @app.route('/get_recommendations', methods=['GET'])
 def get_recs_api():
+    """
+	API endpoint to get property recommendations for a user based on their stored preferences.
+
+	Expects an 'id' header with the user's ID.
+	Returns a JSON response with simplified property recommendation details or an error message.
+	"""
     id = request.headers.get('id')
 
     if not id:
