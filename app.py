@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify
 from supabase import create_client, Client
 from sqlalchemy import create_engine, text
-
+from auth.user import get_user_id
+import traceback
 
 app = Flask(__name__)
 
@@ -33,7 +34,7 @@ def get_recs_query(prefs):
             AND (rental_object->>'rent')::int <= {prefs.get("max_rent", 10000)}
             AND (rental_object->>'squareFeet')::int >= {prefs.get("min_sqft", 0)}
         ORDER BY weighted_score DESC
-        LIMIT 5
+        LIMIT 20
         OFFSET (1 - 1) * 50;
     ''')
     
@@ -94,3 +95,41 @@ def get_recs_api():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/apartments/save', methods=['POST'])
+def save_apartment():
+    authorization = request.headers.get('Authorization', None)
+
+    if authorization is None:
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in save apartments request.' } }), 401
+
+    jwt_token = authorization.split()[1]
+
+    print(jwt_token)
+
+    user_id = ''
+    try:
+        user_id = get_user_id(jwt_token)
+    except:
+        traceback.print_exc()
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
+
+    body = request.get_json()
+    property_id = body.get('property_id', None)
+    rental_key = body.get('rental_key', None)
+    if property_id is None or rental_key is None:
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.PARAMETER_NOT_GIVEN', 'message': 'A unit ID was not supplied. Failed to save apartment' }, 'results': [] }), 500
+
+    saved_apartment = { 'user_id': user_id, 'property_id': property_id, 'rental_key': rental_key }
+    print('test')
+
+    try:
+        data, count = supabase.table('user_apartment').insert(saved_apartment).execute()
+    except:
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.INSERTION_FAILURE', 'message': 'Failed to update database with saved apartment' }, 'results': [] }), 500
+
+    print(data)
+    print(count)
+
+    if data[1] and len(data[1]) > 0:
+        return jsonify({ 'results': [{ 'code': 'OC.MESSAGE.SUCCESS', 'message': 'Successfully saved apartment' }], 'data': data[1] }), 200
