@@ -121,15 +121,11 @@ def save_apartment():
         return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.PARAMETER_NOT_GIVEN', 'message': 'A unit ID was not supplied. Failed to save apartment' }, 'results': [] }), 500
 
     saved_apartment = { 'user_id': user_id, 'property_id': property_id, 'rental_key': rental_key }
-    print('test')
 
     try:
         data, count = supabase.table('user_apartment').insert(saved_apartment).execute()
     except:
         return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.INSERTION_FAILURE', 'message': 'Failed to update database with saved apartment' }, 'results': [] }), 500
-
-    print(data)
-    print(count)
 
     if data[1] and len(data[1]) > 0:
         return jsonify({ 'results': [{ 'code': 'OC.MESSAGE.SUCCESS', 'message': 'Successfully saved apartment' }], 'data': data[1] }), 200
