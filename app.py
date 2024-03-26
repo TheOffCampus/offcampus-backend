@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
 from supabase import create_client, Client
 from sqlalchemy import create_engine, text
+from flask_cors import CORS
 from auth.user import get_user_id
 import traceback
 
 app = Flask(__name__)
+CORS(app, resources={r'/*': {'origins': '*'}})
 
 SUPABASE_URL='https://ihnradjuxnddmmioyeqp.supabase.co/'
 SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlobnJhZGp1eG5kZG1taW95ZXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDc5NDkyODcsImV4cCI6MjAyMzUyNTI4N30.cebjm2GbItaRLa81OYTi3Suffy8u52hO3lSRgjrK5r8'
@@ -14,6 +16,16 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
 def get_recs_query(prefs, user_id):
+    """
+	Generate and execute a raw SQL query to find property recommendations based on user preferences.
+
+	Args:
+    	prefs (dict): User preferences including weights for miles, square footage, and rent,
+                  	as well as filters for campus name, maximum rent, and minimum square footage.
+
+	Returns:
+    	list of dicts: List of recommended properties with details and calculated scores.
+	"""
     query = text(f'''
         SELECT
             p.id AS property_id,
@@ -40,7 +52,7 @@ def get_recs_query(prefs, user_id):
             AND (rental_object->>'rent')::int <= {prefs.get("max_rent", 10000)}
             AND (rental_object->>'squareFeet')::int >= {prefs.get("min_sqft", 0)}
         ORDER BY weighted_score DESC
-        LIMIT 20
+        LIMIT 5
         OFFSET (1 - 1) * 50;
     ''')
     
@@ -48,7 +60,6 @@ def get_recs_query(prefs, user_id):
         result = connection.execute(query).fetchall()
 
     data = []
-
     for row in result:
         row_data = {
             "property_id": row[0],
@@ -62,6 +73,15 @@ def get_recs_query(prefs, user_id):
     return data
 
 def get_prefs_query(id):
+    """
+	Retrieve user preferences from the Supabase 'User' table by user ID.
+
+	Args:
+    	id (int): User ID.
+
+	Returns:
+    	dict: User preferences stored in the database.
+	"""
     result = supabase.table("User").select("preferences").eq("id", id).execute()
 
     preferences = result.data[0]['preferences']
@@ -71,6 +91,12 @@ def get_prefs_query(id):
 # Execute the raw SQL query
 @app.route('/get_recommendations', methods=['GET'])
 def get_recs_api():
+    """
+	API endpoint to get property recommendations for a user based on their stored preferences.
+
+	Expects an 'id' header with the user's ID.
+	Returns a JSON response with simplified property recommendation details or an error message.
+	"""
     authorization = request.headers.get('Authorization', None)
 
     if authorization is None:
@@ -113,7 +139,6 @@ def get_recs_api():
                 'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities'),
                 'isSaved': rec['isSaved']
             }
-            print(simplified_rec)
             simplified_recs.append(simplified_rec)
 
         return jsonify(simplified_recs), 200
