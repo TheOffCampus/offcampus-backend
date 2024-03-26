@@ -13,7 +13,7 @@ SQLALCHEMY_DATABASE_URL = "postgresql://postgres.ihnradjuxnddmmioyeqp:oMbKlcQqT9
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
-def get_recs_query(prefs):
+def get_recs_query(prefs, user_id):
     query = text(f'''
         SELECT
             p.id AS property_id,
@@ -23,12 +23,18 @@ def get_recs_query(prefs):
                 ({prefs.get("miles_weight", 0.5)} * -1 * 1000 * (c.college->>'miles')::float) +
                 ({prefs.get("sqft_weight", 0.5)} * 1 * 800 * (rental_object->>'squareFeet')::int) +
                 ({prefs.get("rent_weight", 0.5)} * -1 * (rental_object->>'rent')::int)
-            ) AS weighted_score
+            ) AS weighted_score,
+            CASE WHEN ua.rental_key IS NOT NULL
+                THEN 1
+                ELSE 0
+            END AS isSaved
         FROM
             properties p,
             jsonb_array_elements(p.data->'schools'->'colleges') AS c(college)
         CROSS JOIN LATERAL
             jsonb_array_elements(p.data->'rentals') AS rental_object
+        LEFT JOIN
+            user_apartment ua ON CAST(rental_object->>'key' AS VARCHAR) = ua.rental_key AND ua.user_id = '{user_id}'
         WHERE
             c.college @> '{{"name": "{prefs.get("campus", "Texas A&M University")}"}}'
             AND (rental_object->>'rent')::int <= {prefs.get("max_rent", 10000)}
@@ -42,12 +48,14 @@ def get_recs_query(prefs):
         result = connection.execute(query).fetchall()
 
     data = []
+
     for row in result:
         row_data = {
             "property_id": row[0],
             "property_data": row[1],
             "rental_object": row[2],
-            "score": row[3]
+            "score": row[3],
+            "isSaved": bool(row[4]),
         }
         data.append(row_data)
 
@@ -60,44 +68,9 @@ def get_prefs_query(id):
 
     return preferences
 
-get_recs_query(get_prefs_query(5))
-
 # Execute the raw SQL query
 @app.route('/get_recommendations', methods=['GET'])
 def get_recs_api():
-    id = request.headers.get('id')
-
-    if not id:
-        return jsonify({'error': 'Missing id header'}), 400
-
-    try:
-        prefs = get_prefs_query(id)
-        recs = get_recs_query(prefs)
-
-        simplified_recs = []
-        for rec in recs:
-            price = rec['property_data']['models'][0].get('rentLabel', 'N/A')
-            price_cleaned = price.replace('/ Person', '').strip()
-            simplified_rec = {
-                'id': rec['property_id'],
-                'name': rec['property_data'].get('propertyName', 'N/A'),
-                'modelName': rec['rental_object'].get('modelName'),
-                'rent': rec['rental_object'].get('rent'),
-                'modelImage': rec['rental_object'].get('image'),
-                'address': rec['property_data']['location'].get('fullAddress', 'N/A'),
-                'price': price_cleaned,
-                'score': rec['score'],
-                'photos': rec['property_data'].get('photos', [''])
-            }
-            simplified_recs.append(simplified_rec)
-
-        return jsonify(simplified_recs)
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/apartments/save', methods=['POST'])
-def save_apartment():
     authorization = request.headers.get('Authorization', None)
 
     if authorization is None:
@@ -105,7 +78,58 @@ def save_apartment():
 
     jwt_token = authorization.split()[1]
 
-    print(jwt_token)
+    user_id = ''
+    try:
+        user_id = get_user_id(jwt_token)
+    except:
+        traceback.print_exc()
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
+
+    try:
+        prefs = get_prefs_query(user_id)
+        recs = get_recs_query(prefs, user_id)
+
+        simplified_recs = []
+        for rec in recs:
+            price = rec['property_data']['models'][0].get('rentLabel', 'N/A')
+            price_cleaned = price.replace('/ Person', '').strip()
+            simplified_rec = {
+                'propertyId': rec['property_id'],
+                'key': rec['rental_object'].get('key'),
+                'name': rec['property_data'].get('propertyName', 'N/A'),
+                'modelName': rec['rental_object'].get('modelName'),
+                'rent': rec['rental_object'].get('rent'),
+                'modelImage': rec['rental_object'].get('image'),
+                'address': rec['property_data']['location'].get('fullAddress', 'N/A'),
+                'price': price_cleaned,
+                'score': rec['score'],
+                'photos': rec['property_data'].get('photos', []),
+                'details': rec['rental_object'].get('details', {}),
+                'squareFeet': rec['rental_object'].get('squareFeet'),
+                'availableDate': rec['rental_object'].get('availableDate'),
+                'isNew': rec['rental_object'].get('isNew'),
+                'features': rec['rental_object'].get('interiorAmenities'),
+                'rating': rec['property_data'].get('rating'),
+                'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities'),
+                'isSaved': rec['isSaved']
+            }
+            print(simplified_rec)
+            simplified_recs.append(simplified_rec)
+
+        return jsonify(simplified_recs), 200
+    
+    except Exception as e:
+        print(e)
+        return jsonify({'error': str(e)}), 500
+
+@app.post('/apartments/save')
+def save_apartment():
+    authorization = request.headers.get('Authorization', None)
+
+    if authorization is None:
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in save apartments request.' } }), 401
+
+    jwt_token = authorization.split()[1]
 
     user_id = ''
     try:
@@ -129,3 +153,22 @@ def save_apartment():
 
     if data[1] and len(data[1]) > 0:
         return jsonify({ 'results': [{ 'code': 'OC.MESSAGE.SUCCESS', 'message': 'Successfully saved apartment' }], 'data': data[1] }), 200
+
+@app.post('/apartments/details')
+def get_apartment_details():
+    authorization = request.headers.get('Authorization', None)
+
+    if authorization is None:
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in save apartments request.' } }), 401
+
+    jwt_token = authorization.split()[1]
+
+    user_id = ''
+    try:
+        user_id = get_user_id(jwt_token)
+    except:
+        traceback.print_exc()
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
+
+    body = request.get_json()
+    rental_key = body.get('rental_key', None)
