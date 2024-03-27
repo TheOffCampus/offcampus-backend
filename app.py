@@ -4,16 +4,19 @@ from sqlalchemy import create_engine, text
 from flask_cors import CORS
 from auth.user import get_user_id
 import traceback
+import os
+from dotenv import dotenv_values
 
 app = Flask(__name__)
 CORS(app, resources={r'/*': {'origins': '*'}})
 
-SUPABASE_URL='https://ihnradjuxnddmmioyeqp.supabase.co/'
-SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlobnJhZGp1eG5kZG1taW95ZXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDc5NDkyODcsImV4cCI6MjAyMzUyNTI4N30.cebjm2GbItaRLa81OYTi3Suffy8u52hO3lSRgjrK5r8'
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres.ihnradjuxnddmmioyeqp:oMbKlcQqT9APDtKG@aws-0-us-west-1.pooler.supabase.com/postgres"
+config = {
+    **dotenv_values(".env"),  # load development variables
+    **os.environ,  # override loaded values with environment variables
+}
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+supabase = create_client(config['SUPABASE_URL'], config['SUPABASE_KEY'])
+engine = create_engine(config['SQLALCHEMY_DATABASE_URL'])
 
 def get_recs_query(prefs, user_id):
     """
@@ -166,18 +169,59 @@ def save_apartment():
     body = request.get_json()
     property_id = body.get('property_id', None)
     rental_key = body.get('rental_key', None)
-    if property_id is None or rental_key is None:
-        return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.PARAMETER_NOT_GIVEN', 'message': 'A unit ID was not supplied. Failed to save apartment' }, 'results': [] }), 500
+    if property_id is None:
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.PARAMETER_NOT_GIVEN', 'message': 'A property id was not supplied. Failed to save apartment.' }, 'results': [] }), 500
+    if rental_key is None:
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.PARAMETER_NOT_GIVEN', 'message': 'A rental unit id was not supplied. Failed to save apartment.' }, 'results': [] }), 500
 
     saved_apartment = { 'user_id': user_id, 'property_id': property_id, 'rental_key': rental_key }
 
     try:
         data, count = supabase.table('user_apartment').insert(saved_apartment).execute()
     except:
-        return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.INSERTION_FAILURE', 'message': 'Failed to update database with saved apartment' }, 'results': [] }), 500
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.APARTMENT.SAVE_FAILURE', 'message': 'Failed to update database with saved apartment' }, 'results': [] }), 500
 
     if data[1] and len(data[1]) > 0:
         return jsonify({ 'results': [{ 'code': 'OC.MESSAGE.SUCCESS', 'message': 'Successfully saved apartment' }], 'data': data[1] }), 200
+
+    return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.DATABASE_FAILURE', 'message': 'Failed to update database for an unknown reason' }, 'results': [] }), 500
+
+
+@app.post('/apartments/remove')
+def remove_saved_apartment():
+    authorization = request.headers.get('Authorization', None)
+
+    if authorization is None:
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in remove apartments request.' } }), 401
+
+    jwt_token = authorization.split()[1]
+
+    user_id = ''
+    try:
+        user_id = get_user_id(jwt_token)
+    except:
+        traceback.print_exc()
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
+
+    body = request.get_json()
+    property_id = body.get('property_id', None)
+    rental_key = body.get('rental_key', None)
+    if property_id is None:
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.PARAMETER_NOT_GIVEN', 'message': 'A property id was not supplied. Failed to remove saved apartment from user account.' }, 'results': [] }), 500
+    if rental_key is None:
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.PARAMETER_NOT_GIVEN', 'message': 'A rental unit id was not supplied. Failed to remove saved apartment from user account.' }, 'results': [] }), 500
+
+    removed_apartment = { 'user_id': user_id, 'property_id': property_id, 'rental_key': rental_key }
+
+    try:
+        data, count = supabase.table('user_apartment').delete().match(removed_apartment).execute()
+    except:
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.APARTMENT.REMOVE_FAILURE', 'message': 'Failed to remove saved apartment form user account.' }, 'results': [] }), 500
+
+    if data[1] and len(data[1]) > 0:
+        return jsonify({ 'results': [{ 'code': 'OC.MESSAGE.SUCCESS', 'message': 'Successfully removed apartment from user.' }], 'data': data[1] })
+
+    return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.DATABASE_FAILURE', 'message': 'Failed to update database for an unknown reason' }, 'results': [] }), 500
 
 @app.post('/apartments/details')
 def get_apartment_details():

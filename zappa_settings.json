@@ -1,0 +1,47 @@
+{
+    "dev": {
+        "app_function": "app.app",
+        "aws_region": "us-east-2",
+        "profile_name": "admin",
+        "project_name": "offcampus-core",
+        "runtime": "python3.11",
+        "s3_bucket": "offcampus-dev-core-api",
+        "environment_variables": {
+            "SUPABASE_URL": "https://ihnradjuxnddmmioyeqp.supabase.co/",
+            "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlobnJhZGp1eG5kZG1taW95ZXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDc5NDkyODcsImV4cCI6MjAyMzUyNTI4N30.cebjm2GbItaRLa81OYTi3Suffy8u52hO3lSRgjrK5r8",
+            "SQLALCHEMY_DATABASE_URL": "postgresql://postgres.ihnradjuxnddmmioyeqp:oMbKlcQqT9APDtKG@aws-0-us-west-1.pooler.supabase.com/postgres"
+        },
+        "certificate_arn": "arn:aws:acm:us-east-2:432520187639:certificate/06758135-8f65-4175-bc8f-ed249d0b4bd5",
+        "domain": "dev.core.api.theoffcamp.us"
+    },
+    "cert": {
+        "app_function": "app.app",
+        "aws_region": "us-east-2",
+        "profile_name": "admin",
+        "project_name": "offcampus-core",
+        "runtime": "python3.11",
+        "s3_bucket": "offcampus-cert-core-api",
+        "environment_variables": {
+            "SUPABASE_URL": "https://ihnradjuxnddmmioyeqp.supabase.co/",
+            "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlobnJhZGp1eG5kZG1taW95ZXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDc5NDkyODcsImV4cCI6MjAyMzUyNTI4N30.cebjm2GbItaRLa81OYTi3Suffy8u52hO3lSRgjrK5r8",
+            "SQLALCHEMY_DATABASE_URL": "postgresql://postgres.ihnradjuxnddmmioyeqp:oMbKlcQqT9APDtKG@aws-0-us-west-1.pooler.supabase.com/postgres"
+        },
+        "certificate_arn": "arn:aws:acm:us-east-2:432520187639:certificate/06758135-8f65-4175-bc8f-ed249d0b4bd5",
+        "domain": "cert.core.api.theoffcamp.us"
+    },
+    "prod": {
+        "app_function": "app.app",
+        "aws_region": "us-east-2",
+        "profile_name": "admin",
+        "project_name": "offcampus-core",
+        "runtime": "python3.11",
+        "s3_bucket": "offcampus-prod-core-api",
+        "environment_variables": {
+            "SUPABASE_URL": "https://ihnradjuxnddmmioyeqp.supabase.co/",
+            "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlobnJhZGp1eG5kZG1taW95ZXFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDc5NDkyODcsImV4cCI6MjAyMzUyNTI4N30.cebjm2GbItaRLa81OYTi3Suffy8u52hO3lSRgjrK5r8",
+            "SQLALCHEMY_DATABASE_URL": "postgresql://postgres.ihnradjuxnddmmioyeqp:oMbKlcQqT9APDtKG@aws-0-us-west-1.pooler.supabase.com/postgres"
+        },
+        "certificate_arn": "arn:aws:acm:us-east-2:432520187639:certificate/06758135-8f65-4175-bc8f-ed249d0b4bd5",
+        "domain": "prod.core.api.theoffcamp.us"
+    }
+}
