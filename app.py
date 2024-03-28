@@ -55,7 +55,7 @@ def get_recs_query(prefs, user_id):
             AND (rental_object->>'rent')::int <= {prefs.get("max_rent", 10000)}
             AND (rental_object->>'squareFeet')::int >= {prefs.get("min_sqft", 0)}
         ORDER BY weighted_score DESC
-        LIMIT 2000
+        LIMIT 10
         OFFSET (1 - 1) * 50;
     ''')
     
@@ -121,21 +121,8 @@ def get_recs_api():
 
         simplified_recs = []
         for rec in recs:
-
             price = rec['property_data']['models'][0].get('rentLabel', 'N/A')
             price_cleaned = price.replace('/ Person', '').strip()
-
-            try:
-                leaseOption = rec['property_data']['models'][inc].get('leaseOptions')
-                leaseOptionFromFee = rec['property_data']['fees'][inc].get('policies')
-                print()
-            except:
-                leaseOption = 'none'
-                leaseOptionFromFee = 'N/A'
-                # print("An exception occurred") 
-    
-        if leaseOptionFromFee != 'N/A':
-            print(leaseOptionFromFee)
             simplified_rec = {
                 'propertyId': rec['property_id'],
                 'key': rec['rental_object'].get('key'),
@@ -155,10 +142,8 @@ def get_recs_api():
                 'rating': rec['property_data'].get('rating'),
                 'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities'),
                 'isSaved': rec['isSaved'],
-                'leaseOption': leaseOption
             }
             simplified_recs.append(simplified_rec)
-            inc += 1
 
         return jsonify(simplified_recs), 200
     
@@ -232,7 +217,7 @@ def remove_saved_apartment():
     try:
         data, count = supabase.table('user_apartment').delete().match(removed_apartment).execute()
     except:
-        return jsonify({ 'error': { 'status': 500, 'code': 'OC.APARTMENT.REMOVE_FAILURE', 'message': 'Failed to remove saved apartment form user account.' }, 'results': [] }), 500
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.APARTMENT.REMOVE_FAILURE', 'message': 'Failed to remove saved apartment from user account.' }, 'results': [] }), 500
 
     if data[1] and len(data[1]) > 0:
         return jsonify({ 'results': [{ 'code': 'OC.MESSAGE.SUCCESS', 'message': 'Successfully removed apartment from user.' }], 'data': data[1] })

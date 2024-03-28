@@ -34,6 +34,7 @@ pydantic==2.6.3
 pydantic_core==2.16.3
 PyJWT==2.8.0
 python-dateutil==2.8.2
+python-dotenv==1.0.1
 python-slugify==8.0.4
 PyYAML==6.0.1
 realtime==1.0.2
@@ -54,5 +55,4 @@ typing_extensions==4.10.0
 urllib3==2.2.1
 websockets==11.0.3
 Werkzeug==3.0.1
-wheel==0.43.0
 zappa==0.58.0
