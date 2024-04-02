@@ -270,6 +270,105 @@ def remove_saved_apartment():
 
     return jsonify({ 'error': { 'status': 500, 'code': 'OC.BUSINESS.DATABASE_FAILURE', 'message': 'Failed to update database for an unknown reason' }, 'results': [] }), 500
 
+def get_saved_apartments(user_id):
+    """
+    Retrieve all saved apartments for a user from the Supabase 'user_apartment' table.
+
+    Args:
+        user_id (int): User ID.
+
+    Returns:
+        list of dicts: List of saved apartments with details.
+    """
+    query = text(f'''
+        SELECT
+            p.id AS property_id,
+            p.data AS property_data,
+            rental_object
+        FROM
+            user_apartment ua
+        JOIN
+            properties p ON ua.property_id = p.id
+        CROSS JOIN LATERAL
+            jsonb_array_elements(p.data->'rentals') AS rental_object
+        WHERE
+            ua.user_id = '{user_id}'
+            AND CAST(rental_object->>'key' AS VARCHAR) = ua.rental_key
+    ''')
+
+    with engine.connect() as connection:
+        result = connection.execute(query).fetchall()
+
+    data = []
+    for row in result:
+        row_data = {
+            "property_id": row[0],
+            "property_data": row[1],
+            "rental_object": row[2],
+            "isSaved": True,
+        }
+        data.append(row_data)
+
+    return data
+
+@app.route('/get_saved_apartments', methods=['GET'])
+def get_saved_apartments_api():
+    """
+    API endpoint to get all saved apartments for a user.
+
+    Expects an 'Authorization' header with the user's JWT token.
+    Returns a JSON response with simplified saved apartment details or an error message.
+    """
+    authorization = request.headers.get('Authorization', None)
+
+    if authorization is None:
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in get saved apartments request.' } }), 401
+
+    jwt_token = authorization.split()[1]
+
+    user_id = ''
+    try:
+        user_id = get_user_id(jwt_token)
+    except:
+        traceback.print_exc()
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
+
+    try:
+        saved_apartments = get_saved_apartments(user_id)
+
+        simplified_apartments = []
+        print(saved_apartments)
+        for apartment in saved_apartments:
+            price = apartment['property_data']['models'][0].get('rentLabel', 'N/A')
+            price_cleaned = price.replace('/ Person', '').strip()
+            simplified_apartment = {
+                'propertyId': apartment['property_id'],
+                'key': apartment['rental_object'].get('key'),
+                'name': apartment['property_data'].get('propertyName', 'N/A'),
+                'modelName': apartment['rental_object'].get('modelName'),
+                'rent': apartment['rental_object'].get('rent'),
+                'modelImage': apartment['rental_object'].get('image'),
+                'address': apartment['property_data']['location'].get('fullAddress', 'N/A'),
+                'price': price_cleaned,
+                'photos': apartment['property_data'].get('photos', []),
+                'details': apartment['rental_object'].get('details', {}),
+                'squareFeet': apartment['rental_object'].get('squareFeet'),
+                'availableDate': apartment['rental_object'].get('availableDate'),
+                'isNew': apartment['rental_object'].get('isNew'),
+                'features': apartment['rental_object'].get('interiorAmenities'),
+                'rating': apartment['property_data'].get('rating'),
+                'hasKnownAvailabilities': apartment['rental_object'].get('hasKnownAvailabilities'),
+                'isSaved': apartment['isSaved']
+            }
+            simplified_apartments.append(simplified_apartment)
+
+     
+        return jsonify(simplified_apartments), 200
+
+    except Exception as e:
+        print(e)
+        return jsonify({'error': str(e)}), 500
+
 @app.post('/apartments/details')
 def get_apartment_details():
     authorization = request.headers.get('Authorization', None)
