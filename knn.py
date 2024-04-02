@@ -105,6 +105,7 @@ user_preferences = {
 }
 
 distances, indices = knn.kneighbors(user_query_transformed, n_neighbors=20)
+unique_property = {}
 
 filtered_indices = []
 for i in indices[0]:
@@ -116,7 +117,7 @@ for i in indices[0]:
 for i in filtered_indices:
     print(df_combined.iloc[i])
 
-def get_df_combined():
+def return_df_combined():
     return df_combined
 
 dump(preprocessor, 'preprocessor.joblib')
