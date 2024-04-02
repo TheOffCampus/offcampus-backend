@@ -117,7 +117,7 @@ for i in indices[0]:
 for i in filtered_indices:
     print(df_combined.iloc[i])
 
-def return_df_combined():
+def get_df_combined():
     return df_combined
 
 dump(preprocessor, 'preprocessor.joblib')
