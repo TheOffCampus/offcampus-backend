@@ -3,9 +3,13 @@ from supabase import create_client, Client
 from sqlalchemy import create_engine, text
 from flask_cors import CORS
 from auth.user import get_user_id
+from knn import get_df_combined
 import traceback
 import os
 from dotenv import dotenv_values
+from joblib import load
+import pandas as pd
+import json
 
 app = Flask(__name__)
 CORS(app, resources={r'/*': {'origins': '*'}})
@@ -150,6 +154,48 @@ def get_recs_api():
     except Exception as e:
         print(e)
         return jsonify({'error': str(e)}), 500
+
+preprocessor = load('preprocessor.joblib')
+knn_model = load('knn_model.joblib')
+
+@app.route('/get_recommendations/v2', methods=['POST'])
+def get_recs_api_v2():
+    print(request.headers)
+    authorization = request.headers.get('Authorization', None)
+
+    if authorization is None:
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in get apartment recommendations v2 request.' } }), 401
+
+    jwt_token = authorization.split()[1]
+
+    user_id = ''
+    try:
+        user_id = get_user_id(jwt_token)
+    except:
+        traceback.print_exc()
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
+    
+    data = request.json
+    user_query = pd.DataFrame([data])
+    
+    # Transform the query
+    user_query_transformed = preprocessor.transform(user_query)
+    
+    # Get distances and indices of the recommendations
+    distances, indices = knn_model.kneighbors(user_query_transformed, n_neighbors=20)
+    df_combined = get_df_combined()
+    user_preferences = {
+    'maxRent': 1200,
+    }
+
+    filtered_indices = []
+    for i in indices[0]:
+        if df_combined.iloc[i]['maxRent'] <= user_preferences['maxRent']:
+            filtered_indices.append(i)
+
+    filtered_data = [df_combined.iloc[i].to_dict() for i in filtered_indices]
+
+    return jsonify(filtered_data)
 
 @app.post('/apartments/save')
 def save_apartment():

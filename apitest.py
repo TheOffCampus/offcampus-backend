@@ -5,7 +5,7 @@ url = "http://127.0.0.1:5000/get_recommendations"
 
 # Define the headers, including the ID
 headers = {
-    'id': '5'
+    'id': 'user_2d3jvU6lHeJc1cSDkB7GVx7QpqB'
 }
 
 response = requests.get(url, headers=headers)
