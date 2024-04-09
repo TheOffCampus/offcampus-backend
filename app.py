@@ -157,8 +157,6 @@ def get_recs_api():
                 'apt_longitude': apt_longitude
             }
             simplified_recs.append(simplified_rec)
-            # print('apt_latitude:', apt_latitude)
-            # print('apt_longitude:', apt_longitude)
 
         return jsonify(simplified_recs), 200
     
