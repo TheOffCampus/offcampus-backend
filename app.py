@@ -71,6 +71,7 @@ def get_recs_query(prefs, user_id):
             "score": row[3],
             "isSaved": bool(row[4]),
         }
+
         data.append(row_data)
 
     return data
@@ -153,9 +154,12 @@ def get_recs_api():
                 'rating': rec['property_data'].get('rating'),
                 'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities'),
                 'isSaved': rec['isSaved'],
+                'phoneNumber': rec['property_data']['contact'].get('phone'),
+                'description': rec['property_data'].get('description')
                 'apt_latitude': apt_latitude,
                 'apt_longitude': apt_longitude
             }
+           
             simplified_recs.append(simplified_rec)
 
         return jsonify(simplified_recs), 200
@@ -304,7 +308,6 @@ def get_saved_apartments_api():
         saved_apartments = get_saved_apartments(user_id)
 
         simplified_apartments = []
-        print(saved_apartments)
         for apartment in saved_apartments:
             price = apartment['property_data']['models'][0].get('rentLabel', 'N/A')
             price_cleaned = price.replace('/ Person', '').strip()
@@ -325,9 +328,12 @@ def get_saved_apartments_api():
                 'features': apartment['rental_object'].get('interiorAmenities'),
                 'rating': apartment['property_data'].get('rating'),
                 'hasKnownAvailabilities': apartment['rental_object'].get('hasKnownAvailabilities'),
-                'isSaved': apartment['isSaved']
+                'isSaved': apartment['isSaved'], 
+                'phoneNumber': apartment['property_data']['contact'].get('phone'),
+                'description': apartment['property_data'].get('description')
             }
             simplified_apartments.append(simplified_apartment)
+
 
      
         return jsonify(simplified_apartments), 200
