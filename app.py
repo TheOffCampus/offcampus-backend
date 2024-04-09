@@ -144,6 +144,7 @@ def get_recs_api():
                 'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities'),
                 'isSaved': rec['isSaved'],
                 'phoneNumber': rec['property_data']['contact'].get('phone'),
+                'description': rec['property_data'].get('description')
           
             }
            
@@ -316,8 +317,8 @@ def get_saved_apartments_api():
                 'rating': apartment['property_data'].get('rating'),
                 'hasKnownAvailabilities': apartment['rental_object'].get('hasKnownAvailabilities'),
                 'isSaved': apartment['isSaved'], 
-                'phoneNumber': apartment['contact'].get('phone'),
-     
+                'phoneNumber': apartment['property_data']['contact'].get('phone'),
+                'description': apartment['property_data'].get('description')
             }
             simplified_apartments.append(simplified_apartment)
 
