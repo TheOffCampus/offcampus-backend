@@ -122,6 +122,17 @@ def get_recs_api():
 
         simplified_recs = []
         for rec in recs:
+            
+
+            apt_latitude = ''
+            apt_longitude = ''
+            try:
+                apt_latitude = rec['property_data']['coordinates']['latitude']
+                apt_longitude = rec['property_data']['coordinates']['longitude']
+            except:
+                apt_latitude = 'N/A'
+                apt_longitude = 'N/A'
+
             price = rec['property_data']['models'][0].get('rentLabel', 'N/A')
             price_cleaned = price.replace('/ Person', '').strip()
             simplified_rec = {
@@ -145,7 +156,8 @@ def get_recs_api():
                 'isSaved': rec['isSaved'],
                 'phoneNumber': rec['property_data']['contact'].get('phone'),
                 'description': rec['property_data'].get('description')
-          
+                'apt_latitude': apt_latitude,
+                'apt_longitude': apt_longitude
             }
            
             simplified_recs.append(simplified_rec)
