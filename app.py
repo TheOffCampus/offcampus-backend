@@ -341,3 +341,69 @@ def get_apartment_details():
 
     body = request.get_json()
     rental_key = body.get('rental_key', None)
+
+@app.post('/update_classes')
+def update_classes():
+    authorization = request.headers.get('Authorization', None)
+
+    if authorization is None:
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in save apartments request.' } }), 401
+
+    jwt_token = authorization.split()[1]
+
+    user_id = ''
+    try:
+        user_id = get_user_id(jwt_token)
+    except:
+        traceback.print_exc()
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
+
+    body = request.get_json()
+    new_classes= body.get('new_classes', None)
+
+    if new_classes is None:
+        return jsonify({'error': {'status': 400, 'code': 'OC.UPDATE.MISSING_FIELD', 'message': 'New classes value not provided.'}}), 400
+
+    query = text('''
+        UPDATE Users
+        SET classes = :new_classes
+        WHERE user_id = :user_id
+        RETURNING classes;
+    ''')
+
+    with engine.connect() as connection:
+        result = connection.execute(query, new_classes=new_classes, user_id=user_id).fetchone()
+        if result:
+            return jsonify({'classes': result['classes']}), 200
+        else:
+            return jsonify({'error': {'status': 404, 'code': 'OC.UPDATE.NOT_FOUND', 'message': 'User not found.'}}), 404
+
+
+@app.get('/get_classes')
+def get_classes():
+    authorization = request.headers.get('Authorization', None)
+
+    if authorization is None:
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in save apartments request.' } }), 401
+
+    jwt_token = authorization.split()[1]
+
+    user_id = ''
+    try:
+        user_id = get_user_id(jwt_token)
+    except:
+        traceback.print_exc()
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
+
+    query = f'''
+        SELECT classes
+        FROM Users
+        WHERE user_id = ${user_id};
+    '''
+
+    with engine.connect() as connection:
+        result = connection.execute(query).fetchone()
+
+    return jsonify(result), 200
+
+    
