@@ -155,7 +155,7 @@ def get_recs_api():
                 'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities'),
                 'isSaved': rec['isSaved'],
                 'phoneNumber': rec['property_data']['contact'].get('phone'),
-                'description': rec['property_data'].get('description')
+                'description': rec['property_data'].get('description'),
                 'apt_latitude': apt_latitude,
                 'apt_longitude': apt_longitude
             }
