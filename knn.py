@@ -15,30 +15,32 @@ with open('dataset_apartments-scraper_2024-02-17_03-39-49-528.json') as f:
 
 property_details = []
 for property in property_data:  
-    monthly_dog_fee = None
+    monthlyPetFee = None
     dog_fees = property['petFees']
     for fee in dog_fees:
         if fee["title"] == "Dogs Allowed":
             for fee_detail in fee["fees"]:
                 if fee_detail["key"] == "Monthly pet rent":
-                    monthly_dog_fee = fee_detail["value"]
-    monthly_cat_fee = None
-    cat_fees = property['petFees']
-    for fee in cat_fees:
-        if fee["title"] == "Cats Allowed":
+                    monthlyPetFee = fee_detail["value"]
+    oneTimeFee = None
+    dog_fees = property['petFees']
+    for fee in dog_fees:
+        if fee["title"] == "Dogs Allowed":
             for fee_detail in fee["fees"]:
-                if fee_detail["key"] == "Monthly pet rent":
-                    monthly_cat_fee = fee_detail["value"]
+                if fee_detail["key"] == "One time Fee":
+                    oneTimeFee = fee_detail["value"]
     details = {
         'propertyId': property['id'],  
         'walkScore': property['scores'].get('walkScore'),
         'rating': property['rating'],  
         'city': property['location'].get('city'),
         'state': property['location'].get('state'),
+        'address': property['location'].get('fullAddress'),
         'latitude': property['coordinates'].get('latitude'),
         'longitude': property['coordinates'].get('longitude'),
-        'monthly_dog_fee': monthly_dog_fee,
-        'monthly_cat_fee': monthly_cat_fee
+        'photos': property['photos'],
+        'monthlyPetFee': monthlyPetFee,
+        'oneTimePetFee': oneTimeFee
     }
     property_details.append(details)
 
@@ -55,14 +57,46 @@ df_normalized = pd.json_normalize(all_rentals_with_propertyId)
 df_subcategories = pd.json_normalize(all_rentals_with_propertyId, record_path=['interiorAmenities', 'subCategories'])
 highlights_amenities = df_subcategories[df_subcategories['name'] == 'Highlights']['amenities']
 
-df_filtered = df_normalized[['propertyId', 'key', 'modelName', 'beds', 'baths', 'maxRent']]
+# export interface ApartmentUnit {
+#   address: string;
+#   photos: string[];
+#   modelImage?: string | null;
+#   rating: number;
+#   features?: Amenity[] | null;
+#   leaseOption?: string | null;
+# }
+# print(df_normalized.info())
+
+# export interface ApartmentUnit {
+#   key: string;
+#   image: string;
+#   name: string;
+#   address: string;
+#   photos: string[];
+#   modelName: string;
+#   modelImage?: string | null;
+#   rent: string;
+#   propertyId: string;
+#   details: string[];
+#   rating: number;
+#   squareFeet: string;
+#   features?: Amenity[] | null;
+#   isNew?: boolean;
+#   hasKnownAvailabilities?: boolean;
+#   availableDate?: Date | string | null;
+#   leaseOption?: string | null;
+# }
+
+df_filtered = df_normalized[['key', 'image', 'modelName', 'rent', 'propertyId', 'details', 'squareFeet', 'isNew', 'hasKnownAvailabilities', 'availableDate']]
 
 df_combined = pd.merge(df_filtered, df_property_details, on='propertyId', how='left')
-
-categorical_features = ['city', 'state']
-numerical_features = ['beds', 'baths', 'maxRent', 'walkScore', 'rating', 'latitude', 'longitude']
+# print(df_combined.info())
 
 df_combined['rating'].fillna(df_combined['rating'].mean(), inplace=True)
+df_combined['details'] = df_combined['details'].apply(lambda x: ', '.join(x))
+
+categorical_features = ['details']
+numerical_features = ['rent', 'squareFeet', 'walkScore', 'rating', 'latitude', 'longitude']
 
 numerical_transformer = Pipeline(steps=[
     ('imputer', SimpleImputer(strategy='mean')),  
@@ -89,11 +123,11 @@ knn.fit(X)
 user_query = pd.DataFrame({
     'city': ['College Station'],  
     'state': ['Texas'], 
-    'beds': [3],
-    'baths': [3.0],
-    'maxRent': [1200],  
-    'walkScore': [50],
-    'rating': [4.0],
+    'details': ['1 Beds, 1 Baths'],
+    'rent': [1050],  
+    'walkScore': [40],
+    'squareFeet': [500],
+    'rating': [4.5],
     'latitude': [30.5], 
     'longitude': [-96.3],
 })
@@ -101,7 +135,7 @@ user_query = pd.DataFrame({
 user_query_transformed = preprocessor.transform(user_query)
 
 user_preferences = {
-    'maxRent': 1200,
+    'rent': 1100,
 }
 
 distances, indices = knn.kneighbors(user_query_transformed, n_neighbors=20)
@@ -109,13 +143,13 @@ unique_property = {}
 
 filtered_indices = []
 for i in indices[0]:
-    if df_combined.iloc[i]['maxRent'] <= user_preferences['maxRent']:
+    if df_combined.iloc[i]['rent'] <= user_preferences['rent']:
         filtered_indices.append(i)
         if len(filtered_indices) == 5:  
             break
 
-for i in filtered_indices:
-    print(df_combined.iloc[i])
+# for i in filtered_indices:
+#     print(df_combined.iloc[i])
 
 def get_df_combined():
     return df_combined
