@@ -344,6 +344,7 @@ def get_apartment_details():
 
 @app.post('/update_classes')
 def update_classes():
+    print('ok')
     authorization = request.headers.get('Authorization', None)
 
     if authorization is None:
@@ -358,28 +359,32 @@ def update_classes():
         traceback.print_exc()
         return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
 
-    body = request.get_json()
+    print("aa")
+
+    body = request.get_json(silent=False)
+
+    print("bb")
     new_classes= body.get('new_classes', None)
 
     if new_classes is None:
         return jsonify({'error': {'status': 400, 'code': 'OC.UPDATE.MISSING_FIELD', 'message': 'New classes value not provided.'}}), 400
+    
+    # query = text('''
+    #     UPDATE User
+    #     SET classes = :new_classes
+    #     WHERE id = :user_id
+    #     RETURNING classes;
+    # ''')
 
-    query = text('''
-        UPDATE Users
-        SET classes = :new_classes
-        WHERE user_id = :user_id
-        RETURNING classes;
-    ''')
+    response = supabase.table("User").update({'classes': new_classes}).eq('id', user_id).execute()
 
-    with engine.connect() as connection:
-        result = connection.execute(query, new_classes=new_classes, user_id=user_id).fetchone()
-        if result:
-            return jsonify({'classes': result['classes']}), 200
-        else:
-            return jsonify({'error': {'status': 404, 'code': 'OC.UPDATE.NOT_FOUND', 'message': 'User not found.'}}), 404
+        # Process the result as needed
+    if response:
+        return jsonify(response.data[0]['classes']), 200
+    else:
+        return jsonify({'error': {'status': 404, 'code': 'OC.UPDATE.NOT_FOUND', 'message': 'User not found.'}}), 404
 
-
-@app.get('/get_classes')
+@app.route('/get_classes', methods=['GET'])
 def get_classes():
     authorization = request.headers.get('Authorization', None)
 
@@ -395,15 +400,14 @@ def get_classes():
         traceback.print_exc()
         return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
 
-    query = f'''
-        SELECT classes
-        FROM Users
-        WHERE user_id = ${user_id};
-    '''
+    response = supabase.table("User").select("classes").eq("id", user_id).single().execute()
 
-    with engine.connect() as connection:
-        result = connection.execute(query).fetchone()
-
-    return jsonify(result), 200
+    # Process the result as needed
+    if response:
+        # Convert result to a dict if necessary, or directly extract the 'classes' value
+        classes = response.data['classes']
+        return jsonify(classes), 200
+    else:
+        return jsonify({'error': 'User not found'}), 404
 
     
