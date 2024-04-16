@@ -359,22 +359,12 @@ def update_classes():
         traceback.print_exc()
         return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
 
-    print("aa")
-
     body = request.get_json(silent=False)
 
-    print("bb")
     new_classes= body.get('new_classes', None)
 
     if new_classes is None:
         return jsonify({'error': {'status': 400, 'code': 'OC.UPDATE.MISSING_FIELD', 'message': 'New classes value not provided.'}}), 400
-    
-    # query = text('''
-    #     UPDATE User
-    #     SET classes = :new_classes
-    #     WHERE id = :user_id
-    #     RETURNING classes;
-    # ''')
 
     response = supabase.table("User").update({'classes': new_classes}).eq('id', user_id).execute()
 
