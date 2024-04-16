@@ -18,17 +18,21 @@ config = {
 supabase = create_client(config['SUPABASE_URL'], config['SUPABASE_KEY'])
 engine = create_engine(config['SQLALCHEMY_DATABASE_URL'])
 
-def get_recs_query(prefs, user_id):
+def get_recs_query(prefs, user_id, page, limit):
     """
-	Generate and execute a raw SQL query to find property recommendations based on user preferences.
+    Generate and execute a raw SQL query to find property recommendations based on user preferences.
 
-	Args:
-    	prefs (dict): User preferences including weights for miles, square footage, and rent,
-                  	as well as filters for campus name, maximum rent, and minimum square footage.
+    Args:
+        prefs (dict): User preferences including weights for miles, square footage, and rent,
+                      as well as filters for campus name, maximum rent, and minimum square footage.
+        user_id (str): User ID.
+        page (int): Page number for pagination.
+        limit (int): Number of items per page.
 
-	Returns:
-    	list of dicts: List of recommended properties with details and calculated scores.
-	"""
+    Returns:
+        list of dicts: List of recommended properties with details and calculated scores.
+    """
+    offset = (page - 1) * limit
     query = text(f'''
         SELECT
             p.id AS property_id,
@@ -55,10 +59,10 @@ def get_recs_query(prefs, user_id):
             AND (rental_object->>'rent')::int <= {prefs.get("max_rent", 10000)}
             AND (rental_object->>'squareFeet')::int >= {prefs.get("min_sqft", 0)}
         ORDER BY weighted_score DESC
-        LIMIT 10
-        OFFSET (1 - 1) * 50;
+        LIMIT {limit}
+        OFFSET {offset};
     ''')
-    
+
     with engine.connect() as connection:
         result = connection.execute(query).fetchall()
 
@@ -115,9 +119,12 @@ def get_recs_api():
         traceback.print_exc()
         return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
 
+
+    page = int(request.args.get('page', 1))
+    limit = int(request.args.get('limit', 10))
     try:
         prefs = get_prefs_query(user_id)
-        recs = get_recs_query(prefs, user_id)
+        recs = get_recs_query(prefs, user_id, page, limit)
     
 
         simplified_recs = []
@@ -155,7 +162,7 @@ def get_recs_api():
                 'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities'),
                 'isSaved': rec['isSaved'],
                 'phoneNumber': rec['property_data']['contact'].get('phone'),
-                'description': rec['property_data'].get('description')
+                'description': rec['property_data'].get('description'),
                 'apt_latitude': apt_latitude,
                 'apt_longitude': apt_longitude
             }
