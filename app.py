@@ -3,8 +3,7 @@ from supabase import create_client, Client
 from sqlalchemy import create_engine, text
 from flask_cors import CORS
 from auth.user import get_user_id
-from knn import get_df_combined
-from knn2 import knn_recommender
+from knn import knn_recommender
 import traceback
 import os
 from dotenv import dotenv_values
@@ -146,69 +145,6 @@ def get_prefs_query(id):
 
     return preferences
 
-@app.route('/data_test', methods=['GET'])
-def data_test():
-    """
-	API endpoint to get property recommendations for a user based on their stored preferences.
-
-	Expects an 'id' header with the user's ID.
-	Returns a JSON response with simplified property recommendation details or an error message.
-	"""
-    authorization = request.headers.get('Authorization', None)
-
-    if authorization is None:
-        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in save apartments request.' } }), 401
-
-    jwt_token = authorization.split()[1]
-
-    user_id = ''
-    try:
-        user_id = get_user_id(jwt_token)
-    except:
-        traceback.print_exc()
-        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
-
-    try:
-        prefs = get_prefs_query(user_id)
-        recs = get_recs_query_v2(prefs, user_id)
-    
-
-        simplified_recs = []
-        for rec in recs:
-            price = rec['property_data']['models'][0].get('rentLabel', 'N/A')
-            price_cleaned = price.replace('/ Person', '').strip()
-            simplified_rec = {
-                'propertyId': rec['property_id'],
-                'key': rec['rental_object'].get('key'),
-                'name': rec['property_data'].get('propertyName', 'N/A'),
-                'modelName': rec['rental_object'].get('modelName'),
-                'rent': rec['rental_object'].get('rent'),
-                'modelImage': rec['rental_object'].get('image'),
-                'address': rec['property_data']['location'].get('fullAddress', 'N/A'),
-                'latitude': rec['property_data']['coordinates'].get('latitude', 'N/A'),
-                'longitude': rec['property_data']['coordinates'].get('longitude', 'N/A'),
-                'walkScore': rec['property_data']['scores'].get('walkScore', 'N/A'),
-                'price': price_cleaned,
-                'photos': rec['property_data'].get('photos', []),
-                'details': rec['rental_object'].get('details', {}),
-                'squareFeet': rec['rental_object'].get('squareFeet'),
-                'availableDate': rec['rental_object'].get('availableDate'),
-                'isNew': rec['rental_object'].get('isNew'),
-                'features': rec['rental_object'].get('interiorAmenities'),
-                'rating': rec['property_data'].get('rating'),
-                'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities'),
-                'isSaved': rec['isSaved'],
-            }
-            simplified_recs.append(simplified_rec)
-
-        res = knn_recommender(simplified_recs, prefs)
-        return jsonify(res), 200
-    
-    except Exception as e:
-        print(e)
-        return jsonify({'error': str(e)}), 500
-
-
 # Execute the raw SQL query
 @app.route('/get_recommendations', methods=['GET'])
 def get_recs_api():
@@ -269,16 +205,18 @@ def get_recs_api():
         print(e)
         return jsonify({'error': str(e)}), 500
 
-preprocessor = load('preprocessor.joblib')
-knn_model = load('knn_model.joblib')
+@app.route('/get_recommendations_v2', methods=['GET'])
+def data_test():
+    """
+	API endpoint to get property recommendations for a user based on their stored preferences.
 
-@app.route('/get_recommendations/v2', methods=['POST'])
-def get_recs_api_v2():
-    print(request.headers)
+	Expects an 'id' header with the user's ID.
+	Returns a JSON response with simplified property recommendation details or an error message.
+	"""
     authorization = request.headers.get('Authorization', None)
 
     if authorization is None:
-        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in get apartment recommendations v2 request.' } }), 401
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in save apartments request.' } }), 401
 
     jwt_token = authorization.split()[1]
 
@@ -288,28 +226,46 @@ def get_recs_api_v2():
     except:
         traceback.print_exc()
         return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
-    
-    data = request.json
-    user_query = pd.DataFrame([data])
-    
-    # Transform the query
-    user_query_transformed = preprocessor.transform(user_query)
-    
-    # Get distances and indices of the recommendations
-    distances, indices = knn_model.kneighbors(user_query_transformed, n_neighbors=20)
-    df_combined = get_df_combined()
-    user_preferences = {
-    'rent': 1100,
-    }
 
-    filtered_indices = []
-    for i in indices[0]:
-        if df_combined.iloc[i]['rent'] <= user_preferences['rent']:
-            filtered_indices.append(i)
+    try:
+        prefs = get_prefs_query(user_id)
+        recs = get_recs_query_v2(prefs, user_id)
+    
 
-    filtered_data = [df_combined.iloc[i].to_dict() for i in filtered_indices]
+        simplified_recs = []
+        for rec in recs:
+            price = rec['property_data']['models'][0].get('rentLabel', 'N/A')
+            price_cleaned = price.replace('/ Person', '').strip()
+            simplified_rec = {
+                'propertyId': rec['property_id'],
+                'key': rec['rental_object'].get('key'),
+                'name': rec['property_data'].get('propertyName', 'N/A'),
+                'modelName': rec['rental_object'].get('modelName'),
+                'rent': rec['rental_object'].get('rent'),
+                'modelImage': rec['rental_object'].get('image'),
+                'address': rec['property_data']['location'].get('fullAddress', 'N/A'),
+                'latitude': rec['property_data']['coordinates'].get('latitude', 'N/A'),
+                'longitude': rec['property_data']['coordinates'].get('longitude', 'N/A'),
+                'walkScore': rec['property_data']['scores'].get('walkScore', 'N/A'),
+                'price': price_cleaned,
+                'photos': rec['property_data'].get('photos', []),
+                'details': rec['rental_object'].get('details', {}),
+                'squareFeet': rec['rental_object'].get('squareFeet'),
+                'availableDate': rec['rental_object'].get('availableDate'),
+                'isNew': rec['rental_object'].get('isNew'),
+                'features': rec['rental_object'].get('interiorAmenities'),
+                'rating': rec['property_data'].get('rating'),
+                'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities'),
+                'isSaved': rec['isSaved'],
+            }
+            simplified_recs.append(simplified_rec)
 
-    return jsonify(filtered_data)
+        res = knn_recommender(simplified_recs, prefs)
+        return jsonify(res), 200
+    
+    except Exception as e:
+        print(e)
+        return jsonify({'error': str(e)}), 500
 
 @app.post('/apartments/save')
 def save_apartment():
