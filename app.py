@@ -367,3 +367,63 @@ def get_apartment_details():
 
     body = request.get_json()
     rental_key = body.get('rental_key', None)
+
+@app.post('/update_classes')
+def update_classes():
+    print('ok')
+    authorization = request.headers.get('Authorization', None)
+
+    if authorization is None:
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in save apartments request.' } }), 401
+
+    jwt_token = authorization.split()[1]
+
+    user_id = ''
+    try:
+        user_id = get_user_id(jwt_token)
+    except:
+        traceback.print_exc()
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
+
+    body = request.get_json(silent=False)
+
+    new_classes= body.get('new_classes', None)
+
+    if new_classes is None:
+        return jsonify({'error': {'status': 400, 'code': 'OC.UPDATE.MISSING_FIELD', 'message': 'New classes value not provided.'}}), 400
+
+    response = supabase.table("User").update({'classes': new_classes}).eq('id', user_id).execute()
+
+        # Process the result as needed
+    if response:
+        return jsonify(response.data[0]['classes']), 200
+    else:
+        return jsonify({'error': {'status': 404, 'code': 'OC.UPDATE.NOT_FOUND', 'message': 'User not found.'}}), 404
+
+@app.route('/get_classes', methods=['GET'])
+def get_classes():
+    authorization = request.headers.get('Authorization', None)
+
+    if authorization is None:
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in save apartments request.' } }), 401
+
+    jwt_token = authorization.split()[1]
+
+    user_id = ''
+    try:
+        user_id = get_user_id(jwt_token)
+    except:
+        traceback.print_exc()
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
+
+    response = supabase.table("User").select("classes").eq("id", user_id).single().execute()
+
+    # Process the result as needed
+    if response:
+        # Convert result to a dict if necessary, or directly extract the 'classes' value
+        classes = response.data['classes']
+        return jsonify(classes), 200
+    else:
+        return jsonify({'error': 'User not found'}), 404
+
+    
