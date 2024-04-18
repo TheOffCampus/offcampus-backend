@@ -18,17 +18,21 @@ config = {
 supabase = create_client(config['SUPABASE_URL'], config['SUPABASE_KEY'])
 engine = create_engine(config['SQLALCHEMY_DATABASE_URL'])
 
-def get_recs_query(prefs, user_id):
+def get_recs_query(prefs, user_id, page, limit):
     """
-	Generate and execute a raw SQL query to find property recommendations based on user preferences.
+    Generate and execute a raw SQL query to find property recommendations based on user preferences.
 
-	Args:
-    	prefs (dict): User preferences including weights for miles, square footage, and rent,
-                  	as well as filters for campus name, maximum rent, and minimum square footage.
+    Args:
+        prefs (dict): User preferences including weights for miles, square footage, and rent,
+                      as well as filters for campus name, maximum rent, and minimum square footage.
+        user_id (str): User ID.
+        page (int): Page number for pagination.
+        limit (int): Number of items per page.
 
-	Returns:
-    	list of dicts: List of recommended properties with details and calculated scores.
-	"""
+    Returns:
+        list of dicts: List of recommended properties with details and calculated scores.
+    """
+    offset = (page - 1) * limit
     query = text(f'''
         SELECT
             p.id AS property_id,
@@ -55,10 +59,10 @@ def get_recs_query(prefs, user_id):
             AND (rental_object->>'rent')::int <= {prefs.get("max_rent", 10000)}
             AND (rental_object->>'squareFeet')::int >= {prefs.get("min_sqft", 0)}
         ORDER BY weighted_score DESC
-        LIMIT 10
-        OFFSET (1 - 1) * 50;
+        LIMIT {limit}
+        OFFSET {offset};
     ''')
-    
+
     with engine.connect() as connection:
         result = connection.execute(query).fetchall()
 
@@ -71,6 +75,7 @@ def get_recs_query(prefs, user_id):
             "score": row[3],
             "isSaved": bool(row[4]),
         }
+
         data.append(row_data)
 
     return data
@@ -114,13 +119,27 @@ def get_recs_api():
         traceback.print_exc()
         return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
 
+
+    page = int(request.args.get('page', 1))
+    limit = int(request.args.get('limit', 10))
     try:
         prefs = get_prefs_query(user_id)
-        recs = get_recs_query(prefs, user_id)
+        recs = get_recs_query(prefs, user_id, page, limit)
     
 
         simplified_recs = []
         for rec in recs:
+            
+
+            apt_latitude = ''
+            apt_longitude = ''
+            try:
+                apt_latitude = rec['property_data']['coordinates']['latitude']
+                apt_longitude = rec['property_data']['coordinates']['longitude']
+            except:
+                apt_latitude = 'N/A'
+                apt_longitude = 'N/A'
+
             price = rec['property_data']['models'][0].get('rentLabel', 'N/A')
             price_cleaned = price.replace('/ Person', '').strip()
             simplified_rec = {
@@ -142,7 +161,12 @@ def get_recs_api():
                 'rating': rec['property_data'].get('rating'),
                 'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities'),
                 'isSaved': rec['isSaved'],
+                'phoneNumber': rec['property_data']['contact'].get('phone'),
+                'description': rec['property_data'].get('description'),
+                'apt_latitude': apt_latitude,
+                'apt_longitude': apt_longitude
             }
+           
             simplified_recs.append(simplified_rec)
 
         return jsonify(simplified_recs), 200
@@ -291,7 +315,6 @@ def get_saved_apartments_api():
         saved_apartments = get_saved_apartments(user_id)
 
         simplified_apartments = []
-        print(saved_apartments)
         for apartment in saved_apartments:
             price = apartment['property_data']['models'][0].get('rentLabel', 'N/A')
             price_cleaned = price.replace('/ Person', '').strip()
@@ -312,9 +335,12 @@ def get_saved_apartments_api():
                 'features': apartment['rental_object'].get('interiorAmenities'),
                 'rating': apartment['property_data'].get('rating'),
                 'hasKnownAvailabilities': apartment['rental_object'].get('hasKnownAvailabilities'),
-                'isSaved': apartment['isSaved']
+                'isSaved': apartment['isSaved'], 
+                'phoneNumber': apartment['property_data']['contact'].get('phone'),
+                'description': apartment['property_data'].get('description')
             }
             simplified_apartments.append(simplified_apartment)
+
 
      
         return jsonify(simplified_apartments), 200
