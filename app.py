@@ -205,7 +205,7 @@ def get_recs_api():
         print(e)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/get_recommendations_v2', methods=['GET'])
+@app.route('/get_recommendations/v2', methods=['GET'])
 def data_test():
     """
 	API endpoint to get property recommendations for a user based on their stored preferences.
