@@ -7,8 +7,6 @@ from knn import knn_recommender
 import traceback
 import os
 from dotenv import dotenv_values
-from joblib import load
-import pandas as pd
 import json
 
 app = Flask(__name__)
