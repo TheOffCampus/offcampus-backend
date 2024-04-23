@@ -3,11 +3,12 @@ from supabase import create_client, Client
 from sqlalchemy import create_engine, text
 from flask_cors import CORS
 from auth.user import get_user_id
-from knn import knn_recommender
 import traceback
 import os
 from dotenv import dotenv_values
 import json
+from joblib import load
+import pandas as pd
 
 app = Flask(__name__)
 CORS(app, resources={r'/*': {'origins': '*'}})
@@ -203,6 +204,9 @@ def get_recs_api():
         print(e)
         return jsonify({'error': str(e)}), 500
 
+preprocessor = load('preprocessor.joblib')
+knn_model = load('knn_model.joblib')
+
 @app.route('/get_recommendations/v2', methods=['GET'])
 def data_test():
     """
@@ -258,8 +262,35 @@ def data_test():
             }
             simplified_recs.append(simplified_rec)
 
-        res = knn_recommender(simplified_recs, prefs)
-        return jsonify(res), 200
+        pref_rent = prefs.get("rent")
+        pref_sqft = prefs.get("squareFeet")
+        pref_details = prefs.get("details")
+        property_data = pd.DataFrame(simplified_recs)
+
+        user_query = pd.DataFrame({ 
+            'details': pref_details,
+            'rent': pref_rent,  
+            'walkScore': [40],
+            'squareFeet': pref_sqft,
+            'rating': [4.2],
+            'latitude': [30.5], 
+            'longitude': [-96.3],
+        })
+
+        user_query_transformed = preprocessor.transform(user_query)
+
+        distances, indices = knn_model.kneighbors(user_query_transformed, n_neighbors=20)
+        user_preferences = {
+        'rent': pref_rent
+        }
+
+        filtered_indices = []
+        for i in indices[0]:
+            if property_data.iloc[i]['rent'] <= user_preferences['rent']:
+                filtered_indices.append(i)
+
+        filtered_data = [property_data.iloc[i].to_dict() for i in filtered_indices]
+        return jsonify(filtered_data), 200
     
     except Exception as e:
         print(e)
