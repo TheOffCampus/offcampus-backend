@@ -6,6 +6,9 @@ from auth.user import get_user_id
 import traceback
 import os
 from dotenv import dotenv_values
+import json
+from joblib import load
+import pandas as pd
 
 app = Flask(__name__)
 CORS(app, resources={r'/*': {'origins': '*'}})
@@ -79,6 +82,56 @@ def get_recs_query(prefs, user_id, page, limit):
         data.append(row_data)
 
     return data
+
+def get_recs_query_v2(prefs, user_id):
+    """
+    Generate and execute a raw SQL query to find property recommendations based on user preferences.
+
+    Args:
+        prefs (dict): User preferences including filters for campus name, maximum rent, and minimum square footage.
+
+    Returns:
+        list of dicts: List of properties with details.
+    """
+    query = text(f'''
+        SELECT
+            p.id AS property_id,
+            p.data AS property_data,
+            rental_object,
+            CASE WHEN ua.rental_key IS NOT NULL
+                THEN 1
+                ELSE 0
+            END AS isSaved
+        FROM
+            properties p,
+            jsonb_array_elements(p.data->'schools'->'colleges') AS c(college)
+        CROSS JOIN LATERAL
+            jsonb_array_elements(p.data->'rentals') AS rental_object
+        LEFT JOIN
+            user_apartment ua ON CAST(rental_object->>'key' AS VARCHAR) = ua.rental_key AND ua.user_id = '{user_id}'
+        WHERE
+            c.college @> '{{"name": "{prefs.get("campus", "Texas A&M University")}"}}'
+            AND (rental_object->>'rent')::int <= {prefs.get("max_rent", 10000)}
+            AND (rental_object->>'squareFeet')::int >= {prefs.get("min_sqft", 0)}
+        LIMIT 100
+        OFFSET (1 - 1) * 50;
+    ''')
+    
+    with engine.connect() as connection:
+        result = connection.execute(query).fetchall()
+
+    data = []
+    for row in result:
+        row_data = {
+            "property_id": row[0],
+            "property_data": row[1],
+            "rental_object": row[2],
+            "isSaved": bool(row[3]),
+        }
+        data.append(row_data)
+
+    return data
+
 
 def get_prefs_query(id):
     """
@@ -170,6 +223,98 @@ def get_recs_api():
             simplified_recs.append(simplified_rec)
 
         return jsonify(simplified_recs), 200
+    
+    except Exception as e:
+        print(e)
+        return jsonify({'error': str(e)}), 500
+
+preprocessor = load('preprocessor.joblib')
+knn_model = load('knn_model.joblib')
+
+@app.route('/get_recommendations/v2', methods=['GET'])
+def data_test():
+    """
+	API endpoint to get property recommendations for a user based on their stored preferences.
+
+	Expects an 'id' header with the user's ID.
+	Returns a JSON response with simplified property recommendation details or an error message.
+	"""
+    authorization = request.headers.get('Authorization', None)
+
+    if authorization is None:
+        return jsonify({ 'error': { 'status': 401, 'code': 'OC.AUTHENTICATION.UNAUTHORIZED', 'message': 'Bearer token not supplied in save apartments request.' } }), 401
+
+    jwt_token = authorization.split()[1]
+
+    user_id = ''
+    try:
+        user_id = get_user_id(jwt_token)
+    except:
+        traceback.print_exc()
+        return jsonify({ 'error': { 'status': 500, 'code': 'OC.AUTHENTICATION.TOKEN_ERROR', 'message': 'Token failed to be verified' }, 'results': [] }), 500
+
+    try:
+        prefs = get_prefs_query(user_id)
+        recs = get_recs_query_v2(prefs, user_id)
+    
+
+        simplified_recs = []
+        for rec in recs:
+            price = rec['property_data']['models'][0].get('rentLabel', 'N/A')
+            price_cleaned = price.replace('/ Person', '').strip()
+            simplified_rec = {
+                'propertyId': rec['property_id'],
+                'key': rec['rental_object'].get('key'),
+                'name': rec['property_data'].get('propertyName', 'N/A'),
+                'modelName': rec['rental_object'].get('modelName'),
+                'rent': rec['rental_object'].get('rent'),
+                'modelImage': rec['rental_object'].get('image'),
+                'address': rec['property_data']['location'].get('fullAddress', 'N/A'),
+                'latitude': rec['property_data']['coordinates'].get('latitude', 'N/A'),
+                'longitude': rec['property_data']['coordinates'].get('longitude', 'N/A'),
+                'walkScore': rec['property_data']['scores'].get('walkScore', 'N/A'),
+                'price': price_cleaned,
+                'photos': rec['property_data'].get('photos', []),
+                'details': rec['rental_object'].get('details', {}),
+                'squareFeet': rec['rental_object'].get('squareFeet'),
+                'availableDate': rec['rental_object'].get('availableDate'),
+                'isNew': rec['rental_object'].get('isNew'),
+                'features': rec['rental_object'].get('interiorAmenities'),
+                'rating': rec['property_data'].get('rating'),
+                'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities'),
+                'isSaved': rec['isSaved'],
+            }
+            simplified_recs.append(simplified_rec)
+
+        pref_rent = prefs.get("rent")
+        pref_sqft = prefs.get("squareFeet")
+        pref_details = prefs.get("details")
+        property_data = pd.DataFrame(simplified_recs)
+
+        user_query = pd.DataFrame({ 
+            'details': pref_details,
+            'rent': pref_rent,  
+            'walkScore': [40],
+            'squareFeet': pref_sqft,
+            'rating': [4.2],
+            'latitude': [30.5], 
+            'longitude': [-96.3],
+        })
+
+        user_query_transformed = preprocessor.transform(user_query)
+
+        distances, indices = knn_model.kneighbors(user_query_transformed, n_neighbors=20)
+        user_preferences = {
+        'rent': pref_rent
+        }
+
+        filtered_indices = []
+        for i in indices[0]:
+            if property_data.iloc[i]['rent'] <= user_preferences['rent']:
+                filtered_indices.append(i)
+
+        filtered_data = [property_data.iloc[i].to_dict() for i in filtered_indices]
+        return jsonify(filtered_data), 200
     
     except Exception as e:
         print(e)
@@ -425,5 +570,3 @@ def get_classes():
         return jsonify(classes), 200
     else:
         return jsonify({'error': 'User not found'}), 404
-
-    

@@ -4,104 +4,155 @@ from sklearn.pipeline import Pipeline
 from sklearn.neighbors import NearestNeighbors
 from sklearn.impute import SimpleImputer
 import pandas as pd
-import json
+from flask import Flask, request, jsonify
+from supabase import create_client, Client
+from sqlalchemy import create_engine, text
+import os
+from dotenv import dotenv_values
+from joblib import dump
 
-df = pd.read_json('dataset_apartments-scraper_2024-02-17_03-39-49-528.json')
-
-with open('dataset_apartments-scraper_2024-02-17_03-39-49-528.json') as f:
-    property_data = json.load(f)
-
-property_details = []
-for property in property_data:  
-    details = {
-        'propertyId': property['id'],  
-        'walkScore': property['scores'].get('walkScore'),
-        'rating': property['rating'],  
-        'city': property['location'].get('city'),
-        'state': property['location'].get('state'),
-        'latitude': property['coordinates'].get('latitude'),
-        'longitude': property['coordinates'].get('longitude')
-    }
-    property_details.append(details)
-
-df_property_details = pd.DataFrame(property_details)
-
-all_rentals_with_propertyId = []
-for property in property_data:  
-    propertyId = property['id']      
-    for rental in property['rentals']:  
-        rental['propertyId'] = propertyId  
-        all_rentals_with_propertyId.append(rental)
-
-df_normalized = pd.json_normalize(all_rentals_with_propertyId)
-
-df_filtered = df_normalized[['propertyId', 'key', 'modelName', 'beds', 'baths', 'maxRent', 'maxSquareFeet']]
-
-df_combined = pd.merge(df_filtered, df_property_details, on='propertyId', how='left')
-
-categorical_features = ['city', 'state']
-numerical_features = ['beds', 'baths', 'maxRent', 'maxSquareFeet', 'walkScore', 'rating', 'latitude', 'longitude']
-
-df_combined['rating'].fillna(df_combined['rating'].mean(), inplace=True)
-
-numerical_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='mean')),  
-    ('scaler', StandardScaler())
-])
-
-categorical_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),  
-    ('onehot', OneHotEncoder(handle_unknown='ignore'))
-])
-
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', numerical_transformer, numerical_features),
-        ('cat', categorical_transformer, categorical_features)
-    ]
-)
-
-X = preprocessor.fit_transform(df_combined)
-
-knn = NearestNeighbors(n_neighbors=5, algorithm='ball_tree')
-knn.fit(X)
-
-user_query = pd.DataFrame({
-    'city': ['College Station'],  
-    'state': ['Texas'], 
-    'beds': [2],
-    'baths': [2.0],
-    'maxRent': [1200],  
-    'maxSquareFeet': [800],
-    'walkScore': [70],
-    'rating': [4.0],
-    'latitude': [30.5], 
-    'longitude': [-96.3],
-})
-
-user_query_transformed = preprocessor.transform(user_query)
-
-user_preferences = {
-    'maxRent': 1200,
-    'maxSquareFeet': 800,
+config = {
+    **dotenv_values(".env"),  # load development variables
+    **os.environ,  # override loaded values with environment variables
 }
 
-distances, indices = knn.kneighbors(user_query_transformed, n_neighbors=100)
-unique_property = set()
+supabase = create_client(config['SUPABASE_URL'], config['SUPABASE_KEY'])
+engine = create_engine(config['SQLALCHEMY_DATABASE_URL'])
 
-filtered_indices = []
-for i in indices[0]:
-    current_propertyId = df_combined.iloc[i]['propertyId']
-    if df_combined.iloc[i]['maxRent'] <= user_preferences['maxRent'] and df_combined.iloc[i]['maxSquareFeet'] <= user_preferences['maxSquareFeet'] and current_propertyId not in unique_property:
-        unique_property.add(current_propertyId)
-        filtered_indices.append(i)
-        if len(filtered_indices) == 5:  
-            break
+def get_recs_query_v2(prefs, user_id):
+    """
+    Generate and execute a raw SQL query to find property recommendations based on user preferences.
 
-for i in filtered_indices:
-    print(df_combined.iloc[i])
+    Args:
+        prefs (dict): User preferences including filters for campus name, maximum rent, and minimum square footage.
+
+    Returns:
+        list of dicts: List of properties with details.
+    """
+    query = text(f'''
+        SELECT
+            p.id AS property_id,
+            p.data AS property_data,
+            rental_object,
+            CASE WHEN ua.rental_key IS NOT NULL
+                THEN 1
+                ELSE 0
+            END AS isSaved
+        FROM
+            properties p,
+            jsonb_array_elements(p.data->'schools'->'colleges') AS c(college)
+        CROSS JOIN LATERAL
+            jsonb_array_elements(p.data->'rentals') AS rental_object
+        LEFT JOIN
+            user_apartment ua ON CAST(rental_object->>'key' AS VARCHAR) = ua.rental_key AND ua.user_id = '{user_id}'
+        WHERE
+            c.college @> '{{"name": "{prefs.get("campus", "Texas A&M University")}"}}'
+            AND (rental_object->>'rent')::int <= {prefs.get("max_rent", 10000)}
+            AND (rental_object->>'squareFeet')::int >= {prefs.get("min_sqft", 0)}
+    ''')
+    
+    with engine.connect() as connection:
+        result = connection.execute(query).fetchall()
+
+    data = []
+    for row in result:
+        row_data = {
+            "property_id": row[0],
+            "property_data": row[1],
+            "rental_object": row[2],
+            "isSaved": bool(row[3]),
+        }
+        data.append(row_data)
+
+    return data
+
+
+def get_prefs_query(id):
+    """
+	Retrieve user preferences from the Supabase 'User' table by user ID.
+
+	Args:
+    	id (int): User ID.
+
+	Returns:
+    	dict: User preferences stored in the database.
+	"""
+    result = supabase.table("User").select("preferences").eq("id", id).execute()
+
+    preferences = result.data[0]['preferences']
+
+    return preferences
 
 
 
+def knn_recommender(data, save_model=False):
 
+    property_data = pd.DataFrame(data)
+    # print(property_data.info())
+    
+    property_data['rating'].fillna(property_data['rating'].mean(), inplace=True)
+    property_data['details'] = property_data['details'].apply(lambda x: ', '.join(x))
 
+    categorical_features = ['details']
+    numerical_features = ['rent', 'squareFeet', 'walkScore', 'rating', 'latitude', 'longitude']
+
+    numerical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='mean')),  
+        ('scaler', StandardScaler())
+    ])
+
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),  
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+    ])
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numerical_transformer, numerical_features),
+            ('cat', categorical_transformer, categorical_features)
+        ]
+    )
+
+    X = preprocessor.fit_transform(property_data)
+
+    knn = NearestNeighbors(n_neighbors=20, algorithm='ball_tree')
+    knn.fit(X)
+
+    if save_model:
+        dump(preprocessor, 'preprocessor.joblib')
+        dump(knn, 'knn_model.joblib')
+
+prefs = get_prefs_query('user_2d3jvU6lHeJc1cSDkB7GVx7QpqB')
+recs = get_recs_query_v2(prefs, 'user_2d3jvU6lHeJc1cSDkB7GVx7QpqB')
+simplified_recs = []
+for rec in recs:
+    price = rec['property_data']['models'][0].get('rentLabel', 'N/A')
+    price_cleaned = price.replace('/ Person', '').strip()
+    simplified_rec = {
+        'propertyId': rec['property_id'],
+        'key': rec['rental_object'].get('key', 'N/A'),  # Set default as 'N/A' if key is missing
+        'name': rec['property_data'].get('propertyName', 'N/A'),
+        'modelName': rec['rental_object'].get('modelName', 'N/A'),
+        'rent': rec['rental_object'].get('rent', 0),  # Default rent as 0 if missing
+        'modelImage': rec['rental_object'].get('image', 'N/A'),
+        'address': rec['property_data']['location'].get('fullAddress', 'N/A'),
+        'latitude': rec['property_data']['coordinates'].get('latitude', 0),  # Default to 0 if missing
+        'longitude': rec['property_data']['coordinates'].get('longitude', 0),
+        'walkScore': rec['property_data']['scores'].get('walkScore', 0),
+        'price': price_cleaned,
+        'photos': rec['property_data'].get('photos', []),
+        'details': rec['rental_object'].get('details', {}),
+        'squareFeet': rec['rental_object'].get('squareFeet', 0),
+        'availableDate': rec['rental_object'].get('availableDate', 'N/A'),
+        'isNew': rec['rental_object'].get('isNew', False),
+        'features': rec['rental_object'].get('interiorAmenities', []),
+        'rating': rec['property_data'].get('rating', 0),
+        'hasKnownAvailabilities': rec['rental_object'].get('hasKnownAvailabilities', False),
+        'isSaved': rec['isSaved'],
+    }
+    simplified_recs.append(simplified_rec)
+
+def get_simplified_recs():
+    return pd.DataFrame(simplified_recs)
+
+knn_recommender(simplified_recs, prefs)
