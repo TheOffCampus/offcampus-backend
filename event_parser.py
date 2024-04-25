@@ -5,11 +5,11 @@ import pandas as pd
 from joblib import load
 from knn import get_simplified_recs
 
-session = boto3.Session(profile_name='AdministratorAccess-432520187639')
+profile_name = 'AdministratorAccess-432520187639'
+session = boto3.Session(profile_name=profile_name)
 s3 = boto3.client('s3')
 bucket_name = 'offcampus-raw-event-store'
 object_key = '2024/04/24/18/OffCampus-Analytics-1-2024-04-24-18-36-30-5c4a036b-a0c2-42d0-97b4-e07130587ee4'
-profile_name = 'AdministratorAccess-432520187639'
 
 def load_data_from_s3(bucket, key, profile_name):
     session = boto3.Session(profile_name=profile_name)
