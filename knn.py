@@ -49,8 +49,6 @@ def get_recs_query_v2(prefs, user_id):
             c.college @> '{{"name": "{prefs.get("campus", "Texas A&M University")}"}}'
             AND (rental_object->>'rent')::int <= {prefs.get("max_rent", 10000)}
             AND (rental_object->>'squareFeet')::int >= {prefs.get("min_sqft", 0)}
-        LIMIT 100
-        OFFSET (1 - 1) * 50;
     ''')
     
     with engine.connect() as connection:
@@ -87,13 +85,10 @@ def get_prefs_query(id):
 
 
 
-def knn_recommender(data, prefs, save_model=True):
+def knn_recommender(data, save_model=False):
 
     property_data = pd.DataFrame(data)
     # print(property_data.info())
-
-    def get_property_data():
-        return property_data
     
     property_data['rating'].fillna(property_data['rating'].mean(), inplace=True)
     property_data['details'] = property_data['details'].apply(lambda x: ', '.join(x))
@@ -124,41 +119,8 @@ def knn_recommender(data, prefs, save_model=True):
     knn.fit(X)
 
     if save_model:
-        # Save the preprocessor and KNN model
         dump(preprocessor, 'preprocessor.joblib')
         dump(knn, 'knn_model.joblib')
-
-    # pref_rent = prefs.get("rent")
-    # pref_sqft = prefs.get("squareFeet")
-    # pref_details = prefs.get("details")
-
-    # user_query = pd.DataFrame({ 
-    #     'details': pref_details,
-    #     'rent': pref_rent,  
-    #     'walkScore': [40],
-    #     'squareFeet': pref_sqft,
-    #     'rating': [4.2],
-    #     'latitude': [30.5], 
-    #     'longitude': [-96.3],
-    # })
-
-    # user_query_transformed = preprocessor.transform(user_query)
-
-    # distances, indices = knn.kneighbors(user_query_transformed, n_neighbors=20)
-    # user_preferences = {
-    # 'rent': pref_rent
-    # }
-
-    # print(pref_rent)
-
-    # filtered_indices = []
-    # for i in indices[0]:
-    #     if property_data.iloc[i]['rent'] <= user_preferences['rent']:
-    #         filtered_indices.append(i)
-
-    # filtered_data = [property_data.iloc[i].to_dict() for i in filtered_indices]
-    # return filtered_data
-
 
 prefs = get_prefs_query('user_2d3jvU6lHeJc1cSDkB7GVx7QpqB')
 recs = get_recs_query_v2(prefs, 'user_2d3jvU6lHeJc1cSDkB7GVx7QpqB')
@@ -189,4 +151,8 @@ for rec in recs:
         'isSaved': rec['isSaved'],
     }
     simplified_recs.append(simplified_rec)
+
+def get_simplified_recs():
+    return pd.DataFrame(simplified_recs)
+
 knn_recommender(simplified_recs, prefs)
